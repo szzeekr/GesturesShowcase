@@ -157,6 +157,7 @@ private struct DragDropDemoCard: View {
                     .frame(width: 54, height: 54)
                     .overlay(Image(systemName: "sparkle").foregroundStyle(.white))
                     .opacity(dropped ? 0.25 : 1)
+                    .contentShape(Circle())
                     .draggable(GestureToken.token) {
                         Circle()
                             .fill(.blue.gradient)
@@ -168,14 +169,20 @@ private struct DragDropDemoCard: View {
                     .foregroundStyle(.secondary)
 
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(isTargeted ? Color.blue.opacity(0.2) : Color.blue.opacity(0.08))
-                    .strokeBorder(.blue, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .fill(isTargeted ? Color.blue.opacity(0.25) : Color.blue.opacity(0.08))
+                    .strokeBorder(.blue, style: StrokeStyle(lineWidth: isTargeted ? 3 : 2, dash: [6]))
                     .frame(width: 90, height: 90)
                     .overlay {
                         Image(systemName: dropped ? "checkmark.circle.fill" : "tray")
                             .font(.title)
                             .foregroundStyle(.blue)
                     }
+                    .scaleEffect(isTargeted ? 1.08 : 1)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isTargeted)
+                    // Extra transparent padding widens the actual hit-tested drop
+                    // region beyond the drawn box, so near-misses still land
+                    .padding(14)
+                    .contentShape(Rectangle())
                     .dropDestination(for: GestureToken.self) { items, _ in
                         guard items.first != nil else { return false }
                         dropped = true
@@ -211,28 +218,45 @@ extension UTType {
 // MARK: - Magnify (pinch)
 
 private struct MagnifyDemoCard: View {
-    @State private var scale: CGFloat = 1
-    @GestureState private var pinchScale: CGFloat = 1
+    // Tracks the zoom multiplier while the user is actively pinching
+    @State private var currentZoom: CGFloat = 0.0
+    // Stores the permanent zoom level after the gesture ends
+    @State private var totalZoom: CGFloat = 1.0
+
+    // Keeps the scale from collapsing to 0 (or flipping negative) on zoom-out,
+    // and from growing without bound on zoom-in
+    private let minZoom: CGFloat = 0.5
+    private let maxZoom: CGFloat = 4.0
+
+    private var displayedZoom: CGFloat {
+        min(maxZoom, max(minZoom, totalZoom + currentZoom))
+    }
 
     var body: some View {
-        DemoCard(title: "Magnify", subtitle: "Pinch to scale the star, release to keep") {
+        DemoCard(title: "Magnify", subtitle: "Pinch to scale the emoji, release to keep") {
             VStack(spacing: 10) {
-                Image(systemName: "star.fill")
-                    .resizable()
-                    .frame(width: 60, height: 60)
-                    .foregroundStyle(.yellow.gradient)
-                    .scaleEffect(scale * pinchScale)
-                    .gesture(
+                Text("🤩")
+                    .font(.system(size: 70))
+                    .contentShape(Rectangle())
+                    // 1. Combine the ongoing pinch value with the saved baseline zoom
+                    .scaleEffect(displayedZoom)
+                    // highPriorityGesture so the enclosing ScrollView's pan recognizer
+                    // (which also accepts 2-finger touches) doesn't steal the pinch first
+                    .highPriorityGesture(
                         MagnifyGesture()
-                            .updating($pinchScale) { value, state, _ in
-                                state = value.magnification
+                            // 2. Triggers continuously as the user moves their fingers
+                            .onChanged { value in
+                                // Subtract 1 because value.magnification starts at 1.0
+                                currentZoom = value.magnification - 1.0
                             }
-                            .onEnded { value in
-                                scale = max(0.5, min(3, scale * value.magnification))
+                            // 3. Triggers once when the user lifts their fingers
+                            .onEnded { _ in
+                                totalZoom = displayedZoom
+                                currentZoom = 0.0 // Reset the active delta tracker
                             }
                     )
 
-                Text(String(format: "%.2fx", scale * pinchScale))
+                Text(String(format: "%.2fx", displayedZoom))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -245,27 +269,25 @@ private struct MagnifyDemoCard: View {
 
 private struct RotateDemoCard: View {
     @State private var angle: Angle = .zero
-    @GestureState private var pinchAngle: Angle = .zero
 
     var body: some View {
-        DemoCard(title: "Rotate", subtitle: "Twist with two fingers to spin the arrow") {
+        DemoCard(title: "Rotate", subtitle: "Drag around the arrow to spin it") {
             VStack(spacing: 10) {
-                Image(systemName: "location.north.fill")
-                    .resizable()
-                    .frame(width: 50, height: 50)
-                    .foregroundStyle(.purple.gradient)
-                    .rotationEffect(angle + pinchAngle)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 60))
+                    .rotationEffect(angle)
                     .gesture(
-                        RotateGesture()
-                            .updating($pinchAngle) { value, state, _ in
-                                state = value.rotation
-                            }
-                            .onEnded { value in
-                                angle += value.rotation
+                        DragGesture()
+                            .onChanged { value in
+                                let center = CGPoint(x: value.startLocation.x, y: value.startLocation.y)
+                                let startVector = CGVector(dx: value.startLocation.x - center.x, dy: value.startLocation.y - center.y)
+                                let currentVector = CGVector(dx: value.location.x - center.x, dy: value.location.y - center.y)
+                                let angleDelta = atan2(currentVector.dy, currentVector.dx) - atan2(startVector.dy, startVector.dx)
+                                angle = Angle(radians: Double(angleDelta))
                             }
                     )
 
-                Text("\(Int((angle + pinchAngle).degrees))°")
+                Text("\(Int(angle.degrees))°")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
