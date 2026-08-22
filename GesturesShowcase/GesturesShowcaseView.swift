@@ -68,7 +68,7 @@ private struct TapDemoCard: View {
                         tapCount += 1
                         isFilled.toggle()
                     }
-                    .onTapGesture(count: 2) {
+                    .onTapGesture (count:2){
                         tapCount = 0
                         isFilled = false
                     }
@@ -179,8 +179,6 @@ private struct DragDropDemoCard: View {
                     }
                     .scaleEffect(isTargeted ? 1.08 : 1)
                     .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isTargeted)
-                    // Extra transparent padding widens the actual hit-tested drop
-                    // region beyond the drawn box, so near-misses still land
                     .padding(14)
                     .contentShape(Rectangle())
                     .dropDestination(for: GestureToken.self) { items, _ in
@@ -218,13 +216,9 @@ extension UTType {
 // MARK: - Magnify (pinch)
 
 private struct MagnifyDemoCard: View {
-    // Tracks the zoom multiplier while the user is actively pinching
     @State private var currentZoom: CGFloat = 0.0
-    // Stores the permanent zoom level after the gesture ends
     @State private var totalZoom: CGFloat = 1.0
 
-    // Keeps the scale from collapsing to 0 (or flipping negative) on zoom-out,
-    // and from growing without bound on zoom-in
     private let minZoom: CGFloat = 0.5
     private let maxZoom: CGFloat = 4.0
 
@@ -238,21 +232,15 @@ private struct MagnifyDemoCard: View {
                 Text("🤩")
                     .font(.system(size: 70))
                     .contentShape(Rectangle())
-                    // 1. Combine the ongoing pinch value with the saved baseline zoom
                     .scaleEffect(displayedZoom)
-                    // highPriorityGesture so the enclosing ScrollView's pan recognizer
-                    // (which also accepts 2-finger touches) doesn't steal the pinch first
                     .highPriorityGesture(
                         MagnifyGesture()
-                            // 2. Triggers continuously as the user moves their fingers
                             .onChanged { value in
-                                // Subtract 1 because value.magnification starts at 1.0
                                 currentZoom = value.magnification - 1.0
                             }
-                            // 3. Triggers once when the user lifts their fingers
                             .onEnded { _ in
                                 totalZoom = displayedZoom
-                                currentZoom = 0.0 // Reset the active delta tracker
+                                currentZoom = 0.0
                             }
                     )
 
